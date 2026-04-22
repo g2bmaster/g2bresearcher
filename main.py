@@ -26,9 +26,9 @@ def fetch_data():
     # 500 에러를 피하기 위한 가장 안정적인 엔드포인트 (용역입찰공고조회)
     url = "http://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoServc01"
     
-    # 날짜: 최근 7일간의 공고
+    # 날짜: 최근 30일간의 공고
     end_dt = datetime.now().strftime('%Y%m%d2359')
-    start_dt = (datetime.now() - timedelta(days=7)).strftime('%Y%m%d0000')
+    start_dt = (datetime.now() - timedelta(days=30)).strftime('%Y%m%d0000')
 
     # 500 에러 방어의 핵심: URL 직접 강제 조립
     # 파이썬이 키를 변형하지 못하도록 f-string으로 묶어버립니다.
