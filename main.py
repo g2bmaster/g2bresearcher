@@ -61,7 +61,7 @@ def fetch_service_bids():
     except:
         return None
 
-if API_KEY == "인증키를 등록해주세요":
+if API_KEY == "61203561a5f6b1757e496997889aa776c9484657a36d4aaea2de18b25192393b":
     st.warning("⚠️ 앱 설정(Secrets)에서 G2B_API_KEY를 등록해야 데이터가 표시됩니다.")
 else:
     with st.spinner('나라장터 서버에서 공고를 분석 중입니다...'):
