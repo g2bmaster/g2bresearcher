@@ -2,112 +2,101 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-import io
 
-st.set_page_config(
-    page_title="홍보·마케팅 용역 공고 알리미", 
-    page_icon="📢",
-    layout="wide"
-)
+# --- 설정 구간 ---
+# 공공데이터포털에서 발급받은 '일반 인증키(Decoding)'를 아래 따옴표 안에 넣으세요.
+SERVICE_KEY = "61203561a5f6b1757e496997889aa776c9484657a36d4aaea2de18b25192393b"
 
-# 사이드바 설정
-with st.sidebar:
-    st.header("⚙️ 검색 필터링")
-    target_keywords = [
-        "SNS", "뉴미디어", "온라인홍보", "캠페인", "신뢰 제고", 
-        "홍보", "마케팅", "브랜딩", "브랜드", "관광", 
-        "유튜브", "영상", "서포터즈"
-    ]
-    
-    selected_category = st.multiselect(
-        "관심 키워드 선택",
-        options=target_keywords,
-        default=target_keywords
-    )
-    
-    days_to_look = st.slider("조회 기간 (최근 며칠?)", 1, 7, 7)
+# 검색 키워드 리스트
+KEYWORDS = ['뉴미디어', '홍보', '온라인 홍보', '서포터즈', '서울창업허브', '농촌관광', '관광', '여행', '브랜딩']
 
-st.title("📢 뉴미디어·홍보 마케팅 입찰공고")
+# 앱 UI 설정
+st.set_page_config(page_title="나라장터 키워드 알리미", layout="wide")
 
-# API 키 설정 (Streamlit Cloud Secrets 필수)
-API_KEY = st.secrets.get("61203561a5f6b1757e496997889aa776c9484657a36d4aaea2de18b25192393b", "인증키_미등록")
+st.header("📢 나라장터 입찰공고 맞춤 리스트")
+st.info(f"검색 키워드: {', '.join(KEYWORDS)}")
 
-@st.cache_data(ttl=3600)
-def fetch_service_bids(days):
-    if API_KEY == "인증키_미등록":
-        return None
-        
-    url = "http://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoServc01"
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+# 날짜 계산 (오늘 기준 최근 7일)
+end_date = datetime.now().strftime('%Y%m%d2359')
+start_date = (datetime.now() - timedelta(days=7)).strftime('%Y%m%d0000')
+
+def get_nara_data():
+    # 용역 입찰공고 조회 API 주소
+    url = "http://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoServcPPSSrch01"
     
     params = {
-        'serviceKey': API_KEY,
-        'type': 'json',
-        'numOfRows': '999',
+        'serviceKey': SERVICE_KEY,
+        'numOfRows': '999',       # 한 번에 가져올 최대 건수
         'pageNo': '1',
-        'bidNtceDtFrom': start_date.strftime('%Y%m%d%H%M'),
-        'bidNtceDtTo': end_date.strftime('%Y%m%d%H%M')
+        'inqryDiv': '1',          # 공고일시 기준
+        'inqryBgnDt': start_date,
+        'inqryEndDt': end_date,
+        'type': 'json'
     }
 
     try:
         response = requests.get(url, params=params, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            items = data.get('response', {}).get('body', {}).get('items', [])
-            return pd.DataFrame(items) if items else pd.DataFrame()
-        else:
-            return "API_ERROR"
-    except:
-        return "CONN_ERROR"
+        
+        # API 응답 확인
+        if response.status_code != 200:
+            st.error(f"API 요청 실패 (코드: {response.status_code})")
+            return []
 
-if API_KEY == "인증키_미등록":
-    st.error("⚠️ Streamlit Cloud의 Settings > Secrets에 G2B_API_KEY를 등록해주세요.")
-else:
-    with st.spinner('실시간 공고 데이터를 불러오는 중...'):
-        df_raw = fetch_service_bids(days_to_look)
+        result = response.json()
+        items = result.get('response', {}).get('body', {}).get('items', [])
+        
+        if not items:
+            return []
 
-    if isinstance(df_raw, pd.DataFrame) and not df_raw.empty:
-        cols = {
-            'bidNtceNm': '공고명',
-            'ntceInsttNm': '공고기관',
-            'demandInsttNm': '수요기관',
-            'bidNtceDt': '게시일시',
-            'bidClseDt': '마감일시',
-            'bidNtceUrl': '공고링크'
-        }
-        df = df_raw[cols.keys()].rename(columns=cols)
+        # 키워드 필터링 로직
+        filtered = []
+        for item in items:
+            title = item.get('bidNtceNm', '')
+            # 제목에 키워드 중 하나라도 포함되어 있는지 확인
+            if any(keyword in title for keyword in KEYWORDS):
+                filtered.append({
+                    "공고명": title,
+                    "공고기관": item.get('ntceInsttNm'),
+                    "수요기관": item.get('dminsttNm'),
+                    "공고일시": item.get('bidNtceDt'),
+                    "마감일시": item.get('bidClseDt'),
+                    "공고링크": item.get('bidNtceDtlUrl')
+                })
+        return filtered
 
-        if selected_category:
-            pattern = '|'.join(selected_category)
-            df_filtered = df[df['공고명'].str.contains(pattern, case=False, na=False)].reset_index(drop=True)
-        else:
-            df_filtered = pd.DataFrame()
+    except Exception as e:
+        st.error(f"데이터를 가져오는 중 오류 발생: {e}")
+        return []
 
-        if not df_filtered.empty:
-            st.success(f"총 {len(df_filtered)}건의 맞춤 공고를 발견했습니다.")
-            st.dataframe(
-                df_filtered, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "공고링크": st.column_config.LinkColumn("공고링크", display_text="상세보기 🔗")
-                }
-            )
-
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_filtered.to_excel(writer, index=False, sheet_name='Bid_List')
+# 실행 버튼
+if st.button("최신 공고 불러오기 (최근 1주일)"):
+    with st.spinner('나라장터 서버에서 데이터를 긁어오는 중...'):
+        data = get_nara_data()
+        
+        if data:
+            df = pd.DataFrame(data)
+            st.success(f"총 {len(df)}건의 맞춤 공고를 찾았습니다!")
             
+            # 표 출력 (링크를 클릭 가능하게 만들기)
+            st.dataframe(
+                df, 
+                column_config={
+                    "공고링크": st.column_config.Link_column("상세보기")
+                },
+                use_container_width=True
+            )
+            
+            # 엑셀 다운로드 기능
+            csv = df.to_csv(index=False).encode('utf-8-sig')
             st.download_button(
-                label="📥 엑셀 다운로드",
-                data=output.getvalue(),
-                file_name=f"G2B_PR_Bids_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                label="결과를 엑셀(CSV)로 저장",
+                data=csv,
+                file_name=f"나라장터_검색결과_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
             )
         else:
-            st.warning("일치하는 공고가 없습니다.")
-    elif df_raw == "API_ERROR" or df_raw == "CONN_ERROR":
-        st.error("❌ API 서버 통신 실패")
-    else:
-        st.info("해당 기간 내 등록된 공고가 없습니다.")
+            st.warning("최근 1주일 내에 해당 키워드가 포함된 공고가 없습니다.")
+
+# 하단 정보
+st.markdown("---")
+st.caption(f"검색 기간: {start_date[:8]} ~ {end_date[:8]} | 데이터 출처: 조달청 나라장터 API")
