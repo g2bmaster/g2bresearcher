@@ -4,79 +4,110 @@ import pandas as pd
 from datetime import datetime, timedelta
 import io
 
-st.set_page_config(page_title="G2B 마케팅 큐레이터", layout="wide")
+# 1. 페이지 설정
+st.set_page_config(page_title="G2B 공고 정밀 분석기", layout="wide")
 
-# --- Streamlit Secrets에서 키 불러오기 ---
-# 설정한 이름(API_KEY)과 동일해야 합니다.
+# 2. Secrets에서 안전하게 키 로드
 try:
+    # TOML 형식: API_KEY = "내_디코딩_키" 가 설정되어 있어야 함
     MY_API_KEY = st.secrets["API_KEY"]
-except:
-    st.error("🔑 Secrets 설정에서 'API_KEY'를 먼저 등록해주세요.")
+except KeyError:
+    st.error("🔑 Streamlit Cloud의 'Secrets' 설정에서 'API_KEY'를 먼저 등록해주세요.")
     st.stop()
 
-st.title("🏛️ 나라장터 마케팅/뉴미디어 공고 리스팅")
+st.title("🏛️ 나라장터 마케팅/뉴미디어 공고 큐레이터")
 
+# 3. 타겟 키워드 (OR 조건: 하나라도 포함되면 검색)
 TARGET_KEYWORDS = [
     "뉴미디어", "홍보", "온라인 홍보", "서포터즈", "서울창업허브", 
     "농촌관광", "관광", "여행", "브랜딩", "SNS", "캠페인", "영상", "마케팅"
 ]
 
-def fetch_data():
-    # 이미지에서 확인하신 용역조회 API 사용
-    url = "http://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoServc01"
+@st.cache_data(ttl=600)
+def fetch_bid_data():
+    # 이미지에서 확인된 가장 안정적인 '용역입찰공고조회' 엔드포인트 사용
+    endpoint = "http://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoServc01"
     
-    end_dt = datetime.now().strftime('%Y%m%d2359')
-    start_dt = (datetime.now() - timedelta(days=7)).strftime('%Y%m%d0000')
+    # 서버 부담을 줄이기 위해 요청 범위를 최근 5일로 소폭 조정
+    now = datetime.now()
+    start_dt = (now - timedelta(days=5)).strftime('%Y%m%d0000')
+    end_dt = now.strftime('%Y%m%d2359')
 
-    # 500 에러 방어: URL 직접 강제 조립
-    full_url = (
-        f"{url}?serviceKey={MY_API_KEY}"
-        f"&numOfRows=999&pageNo=1&type=json"
-        f"&bidNtceDtFrom={start_dt}&bidNtceDtTo={end_dt}"
-        f"&inprogrsWbidPblancYn=Y"
+    # 500 에러 원천 차단: 라이브러리 자동 인코딩을 피하기 위해 쿼리 스트링 수동 조립
+    # 핵심: serviceKey를 가장 앞에 두고 다른 파라미터를 뒤로 배치
+    params_str = (
+        f"serviceKey={MY_API_KEY}"
+        f"&numOfRows=500"  # 999에서 500으로 하향 조정 (서버 응답 속도 및 안정성 확보)
+        f"&pageNo=1"
+        f"&type=json"
+        f"&bidNtceDtFrom={start_dt}"
+        f"&bidNtceDtTo={end_dt}"
     )
+    
+    full_url = f"{endpoint}?{params_str}"
 
     try:
-        response = requests.get(full_url, timeout=20)
+        # User-Agent를 추가하여 브라우저의 요청처럼 위장 (일부 서버의 봇 차단 방지)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        response = requests.get(full_url, headers=headers, timeout=15)
         
-        if response.status_code != 200:
-            return None, f"서버 오류 (HTTP {response.status_code})"
-
-        if response.text.startswith("<?xml"):
-            return None, "인증키 거부 혹은 서버 점검 중입니다. (XML 에러 응답)"
-
-        data = response.json()
-        items = data.get('response', {}).get('body', {}).get('items', [])
-        return pd.DataFrame(items) if items else pd.DataFrame(), None
-
+        if response.status_code == 200:
+            # XML 에러 메시지가 섞여 오는지 확인
+            if response.text.startswith("<?xml"):
+                return None, f"API 키 유효성 오류: {response.text[:100]}"
+            
+            data = response.json()
+            items = data.get('response', {}).get('body', {}).get('items', [])
+            return pd.DataFrame(items) if items else pd.DataFrame(), None
+        else:
+            # 500 에러 시 서버가 남긴 텍스트를 그대로 출력하여 원인 파악
+            return None, f"서버 오류 (HTTP {response.status_code}): {response.text[:150]}"
+            
     except Exception as e:
-        return None, f"연결 실패: {str(e)}"
+        return None, f"통신 예외 발생: {str(e)}"
 
-if st.button("🚀 공고 리스팅 시작"):
-    with st.spinner("Secrets 키를 사용하여 데이터를 분석 중입니다..."):
-        df_raw, err = fetch_data()
+# 실행 UI
+st.write(f"🔍 **필터링 키워드:** {', '.join(TARGET_KEYWORDS)}")
+
+if st.button("🚀 데이터 정밀 수집 시작"):
+    with st.spinner("전문가 엔진이 나라장터 통신 규격을 최적화 중입니다..."):
+        df_raw, err = fetch_bid_data()
 
     if err:
         st.error(f"❌ {err}")
+        st.info("💡 **최종 점검:**\n1. Secrets에 넣은 키 앞뒤에 공백이나 큰따옴표가 중복되지 않았는지 확인하세요.\n2. 혹시 모르니 '인코딩 키'로도 교체해서 저장해 보세요.")
     elif df_raw is not None:
         if not df_raw.empty:
-            cols = {'bidNtceNm': '공고명', 'ntceInsttNm': '공고기관', 'bidNtceDt': '게시일시', 'bidClseDt': '마감일시', 'bidNtceUrl': '링크'}
-            df = df_raw[list(cols.keys())].rename(columns=cols)
+            # 필요한 데이터 전처리
+            display_cols = {
+                'bidNtceNm': '공고명',
+                'ntceInsttNm': '공고기관',
+                'bidNtceDt': '게시일시',
+                'bidNtceUrl': '공고링크'
+            }
+            df = df_raw[list(display_cols.keys())].rename(columns=display_cols)
 
-            # OR 조건 필터링: 키워드 중 하나라도 포함되면 표시
+            # OR 조건 검색: 키워드 중 하나라도 공고명에 포함되면 필터링
             pattern = '|'.join(TARGET_KEYWORDS)
             df_filtered = df[df['공고명'].str.contains(pattern, case=False, na=False, regex=True)].reset_index(drop=True)
 
             if not df_filtered.empty:
-                st.success(f"🎯 총 {len(df_filtered)}건의 매칭 공고 발견")
-                st.dataframe(df_filtered, use_container_width=True, hide_index=True,
-                             column_config={"링크": st.column_config.LinkColumn("상세보기 🔗")})
+                st.success(f"🎯 맞춤 공고 {len(df_filtered)}건을 발견했습니다.")
+                st.dataframe(
+                    df_filtered,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={"공고링크": st.column_config.LinkColumn("상세보기 🔗")}
+                )
                 
+                # 엑셀 보고서 생성
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df_filtered.to_excel(writer, index=False)
-                st.download_button("📥 엑셀 저장", output.getvalue(), "G2B_List.xlsx")
+                st.download_button("📥 분석 결과 엑셀 다운로드", output.getvalue(), "G2B_Analysis.xlsx")
             else:
-                st.warning("일치하는 키워드의 공고가 없습니다.")
+                st.warning("분석 결과, 현재 기준 필터링된 공고가 없습니다.")
         else:
-            st.info("현재 등록된 새 공고가 없습니다.")
+            st.info("최근 5일간 등록된 입찰
