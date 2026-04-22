@@ -19,7 +19,7 @@ st.title("🏛️ 나라장터 마케팅/뉴미디어 공고 큐레이터")
 
 # 3. 타겟 키워드 (OR 조건: 하나라도 포함되면 검색)
 TARGET_KEYWORDS = [
-    "뉴미디어", "홍보", "온라인 홍보", "서포터즈", "서울창업허브", 
+    "뉴미디어", "홍보", "온라인 홍보", "서포터즈", "서울창업허브", "외국인"
     "농촌관광", "관광", "여행", "브랜딩", "SNS", "캠페인", "영상", "마케팅"
 ]
 
@@ -37,7 +37,7 @@ def fetch_bid_data():
     # 핵심: serviceKey를 가장 앞에 두고 다른 파라미터를 뒤로 배치
     params_str = (
         f"serviceKey={MY_API_KEY}"
-        f"&numOfRows=500"  # 999에서 500으로 하향 조정 (서버 응답 속도 및 안정성 확보)
+        f"&numOfRows=100"  
         f"&pageNo=1"
         f"&type=json"
         f"&bidNtceDtFrom={start_dt}"
