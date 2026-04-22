@@ -28,9 +28,9 @@ def fetch_bid_data():
     # 이미지에서 확인된 가장 안정적인 '용역입찰공고조회' 엔드포인트 사용
     endpoint = "http://apis.data.go.kr/1230000/BidPublicInfoService05/getBidPblancListInfoServc01"
     
-    # 서버 부담을 줄이기 위해 요청 범위를 최근 5일로 소폭 조정
+    # 서버 부담을 줄이기 위해 요청 범위를 최근 10일로 소폭 조정
     now = datetime.now()
-    start_dt = (now - timedelta(days=5)).strftime('%Y%m%d0000')
+    start_dt = (now - timedelta(days=10)).strftime('%Y%m%d0000')
     end_dt = now.strftime('%Y%m%d2359')
 
     # 500 에러 원천 차단: 라이브러리 자동 인코딩을 피하기 위해 쿼리 스트링 수동 조립
@@ -110,4 +110,4 @@ if st.button("🚀 데이터 정밀 수집 시작"):
             else:
                 st.warning("분석 결과, 현재 기준 필터링된 공고가 없습니다.")
         else:
-            st.info("최근 5일간 등록된 입찰
+            st.info("최근 10일간 등록된 입찰 데이터 자체가 없습니다.")
