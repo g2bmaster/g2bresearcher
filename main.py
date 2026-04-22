@@ -8,7 +8,7 @@ import io
 st.set_page_config(page_title="나라장터 정밀 알리미", layout="wide")
 
 # --- [수정] 본인의 'Decoding' 인증키를 입력하세요 ---
-MY_API_KEY = 61203561a5f6b1757e496997889aa776c9484657a36d4aaea2de18b25192393b
+MY_API_KEY = "61203561a5f6b1757e496997889aa776c9484657a36d4aaea2de18b25192393b"
 # --------------------------------------------------
 
 st.title("🏛️ 나라장터 홍보·마케팅 용역 정밀 검색")
