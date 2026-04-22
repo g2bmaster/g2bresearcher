@@ -8,9 +8,10 @@ from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
 
 # ────────────────────────────────────────────────────────────
-# ✅ 핵심: requests 라이브러리를 완전히 제거하고
-#          파이썬 표준 라이브러리 urllib 만 사용
-#          → Streamlit Cloud 환경에서 재인코딩 이슈 원천 차단
+# ✅ 인코딩 키 사용 버전
+#    인코딩 키는 특수문자가 없으므로 urlencode() 에 그냥 넣어도 됨
+#    단, 공공데이터포털 서버는 인코딩 키를 받으면 내부에서
+#    자동으로 디코딩 처리하므로 정상 동작함
 # ────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="G2B 마케팅 공고 분석기", layout="wide")
@@ -35,30 +36,21 @@ BASE_URL = (
 )
 
 # ────────────────────────────────────────────────────────────
-# URL 조립 방식 설명
-#
-# 공공데이터포털 디코딩 키는 +, /, = 등 특수문자를 포함합니다.
-# requests / urllib 의 params= 옵션을 쓰면 이 문자들이
-# %2B, %2F, %3D 로 이중인코딩 → 서버에서 키 불일치 → 500 에러
-#
-# 해결책:
-#   1. serviceKey 는 quote() 없이 그대로 문자열에 붙임
-#   2. 나머지 파라미터만 urlencode() 로 처리
-#   3. 최종 URL 을 문자열로 직접 조립
-#   4. urllib.request.urlopen 으로 호출 (requests 미사용)
+# 인코딩 키는 urlencode() 에 함께 넣어도 이중인코딩 문제 없음
+# (영문+숫자만으로 구성되어 변환될 특수문자가 없기 때문)
 # ────────────────────────────────────────────────────────────
 
 def build_url(api_key: str, start_dt: str, end_dt: str,
               page: int = 1, rows: int = 999) -> str:
-    other = urlencode({
-        "numOfRows": rows,
-        "pageNo":    page,
-        "type":      "json",
+    params = urlencode({
+        "serviceKey":    api_key,
+        "numOfRows":     rows,
+        "pageNo":        page,
+        "type":          "json",
         "bidNtceDtFrom": start_dt,
         "bidNtceDtTo":   end_dt,
     })
-    # serviceKey 를 맨 앞에, 인코딩 없이 그대로 연결
-    return f"{BASE_URL}?serviceKey={api_key}&{other}"
+    return f"{BASE_URL}?{params}"
 
 
 @st.cache_data(ttl=600)
@@ -80,7 +72,7 @@ def fetch_g2b_data(days_back: int = 30):
         }
     )
 
-    # ── 디버그: 키 앞 10자리만 노출 ─────────────────────────
+    # 디버그: 키 앞 10자리만 노출
     with st.expander("🔍 디버그: 요청 URL 확인 (키 일부 마스킹)", expanded=False):
         safe = url.replace(MY_API_KEY, MY_API_KEY[:10] + "****")
         st.code(safe, language="text")
@@ -114,21 +106,19 @@ def fetch_g2b_data(days_back: int = 30):
     try:
         data = json.loads(raw_text)
     except json.JSONDecodeError:
-        return None, (
-            f"JSON 파싱 실패. 원문:\n```\n{raw_text[:400]}\n```"
-        )
+        return None, f"JSON 파싱 실패. 원문:\n```\n{raw_text[:400]}\n```"
 
     header      = data.get("response", {}).get("header", {})
     result_code = header.get("resultCode", "")
     result_msg  = header.get("resultMsg", "알 수 없음")
 
-    if result_code == "03":          # 정상이지만 데이터 없음
+    if result_code == "03":      # 정상이지만 데이터 없음
         return pd.DataFrame(), None
     if result_code != "00":
         return None, f"API 오류 [{result_code}]: {result_msg}"
 
     items = data.get("response", {}).get("body", {}).get("items", [])
-    if isinstance(items, dict):      # 단건 응답 방어
+    if isinstance(items, dict):  # 단건 응답 방어
         items = [items]
 
     return (pd.DataFrame(items) if items else pd.DataFrame()), None
@@ -140,7 +130,7 @@ def _checklist() -> str:
 
 | # | 확인 항목 | 조치 |
 |---|-----------|------|
-| 1 | secrets 에 **디코딩(Decoding) 키** 입력 여부 | 포털 마이페이지 → 인코딩/디코딩 탭 구분 |
+| 1 | secrets 에 **인코딩(Encoding) 키** 입력 여부 | 포털 마이페이지 → 인코딩 탭의 키 확인 |
 | 2 | 해당 API **활용 승인** 완료 여부 | 포털 → 마이페이지 → 활용신청 목록 확인 |
 | 3 | API 신청 후 **1~2시간** 경과 여부 | 승인 직후엔 키가 활성화되지 않음 |
 | 4 | 나라장터 **서버 점검 시간** 여부 | 보통 새벽 02:00~04:00 |
